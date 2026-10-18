@@ -1,0 +1,17 @@
+.venv/
+.cache/
+.local/
+__pycache__/
+.idea/
+src/models/
+src/flagged/
+*.log
+.env
+.env.*
+!.env.example
+src/aiconfig.json
+data/*
+!data/.gitkeep
+concepts/
+frontend/node_modules/
+frontend/dist/

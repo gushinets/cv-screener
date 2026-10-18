@@ -1,0 +1,32 @@
+{
+  "embedding": "miniLM",
+  "miniLM": {
+    "provider": "sentenceTransformer",
+    "model": "sentence-transformers/multi-qa-MiniLM-L6-cos-v1",
+    "tokens": 512
+  },
+  "chat": "openai-gpt-6-luna",
+  "openai-gpt-6-luna": {
+    "provider": "openai",
+    "genkey": "",
+    "model": "gpt-6-luna",
+    "modelResponseTokens": 128000,
+    "modelTotalTokens": 1050000,
+    "reasoning_effort": "medium"
+  },
+  "store": "qdrant",
+  "qdrant": {
+    "provider": "qdrant",
+    "collection": "resumes",
+    "host": "localhost",
+    "port": 6333,
+    "similarity": "Cosine",
+    "renderChunkSize": 1000
+  },
+  "preprocessor": {
+    "chunk_size": 512,
+    "chunk_overlap": 0,
+    "keep_separator": true,
+    "strip_whitespace": true
+  }
+}

@@ -39,6 +39,10 @@ class Embedding(EmbeddingBase):
 
         # Get our section
         section = config[sectionName]
+        self._batchSize = section.get('batch_size', 32)
+        if 'cpu_threads' in section:
+            import torch
+            torch.set_num_threads(section['cpu_threads'])
 
         # Get the model from our section
         self._model = section['model']
@@ -52,7 +56,8 @@ class Embedding(EmbeddingBase):
         # Create the embedding
         self._embedding = SentenceTransformer(
             model_name_or_path=self._model,
-            cache_folder=self._modelFolder
+            cache_folder=self._modelFolder,
+            revision=section.get('revision')
         )
 
         # Check it
@@ -71,7 +76,8 @@ class Embedding(EmbeddingBase):
         # Note the different variable names for the cache dir from above
         self._tokenCounter = AutoTokenizer.from_pretrained(
             self._model,
-            cache_dir=self._modelFolder)
+            cache_dir=self._modelFolder,
+            revision=section.get('revision'))
 
     def getVectorSize(self) -> int:
         '''
@@ -116,7 +122,7 @@ class Embedding(EmbeddingBase):
 
         # Get the vectors
         array_vectors = self._embedding.encode(
-            embeddings, show_progress_bar=False)
+            embeddings, show_progress_bar=False, batch_size=self._batchSize)
 
         # Save the embeddings
         for index in range(0, len(chunks)):

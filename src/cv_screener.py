@@ -6,6 +6,7 @@ from openai import AsyncOpenAI
 
 from common.config import Config
 from common.schema import DocFilter
+from common.hybrid import rank_documents
 from search.search import Search
 
 config = Config.getConfig()
@@ -18,7 +19,7 @@ search = Search()
 client = AsyncOpenAI(api_key=chat_genkey, timeout=45, max_retries=1)
 docFilter = DocFilter({
     'context': False, 'content': True, 'useTableConcat': False,
-    'useGroupRank': False, 'useQuickRank': True, 'isTable': False, 'limit': 100,
+    'useGroupRank': False, 'useQuickRank': False, 'isTable': False, 'limit': 100,
 })
 
 EXAMPLES = [
@@ -39,25 +40,10 @@ SYSTEM_PROMPT = '''Ты помощник по подбору кандидато�
 
 
 async def query_qdrant(query):
-    # Rerank a wider pool, then keep distinct resumes so related roles and repeated chunks cannot crowd them out.
     documents = await search.asearch(query=query, docFilter=docFilter)
-    if re.search(r'\.(?:pdf|docx|txt)\b', query, re.IGNORECASE):
-        store = search.getStore()
-        paths = await store.agetPaths(limit=1000)
-        object_ids = [object_id for name, object_id in paths.items() if name.casefold() in query.casefold()]
-        if object_ids:
-            # Exact filenames must survive semantic rank-out; the caller expands their complete contents.
-            documents = await store.aget(DocFilter({'objectIds': object_ids, 'chunk': 0,
-                                                    'isTable': False, 'limit': 1000})) + documents
-    names, selected = set(), []
-    for document in documents:
-        name = document.metadata['parent']
-        if name not in names:
-            names.add(name)
-            selected.append(document)
-            if len(selected) == 25:
-                break
-    return selected
+    # Read indexed text afresh so successful uploads and rollbacks cannot leave stale lexical entries.
+    chunks = await search.getStore().aget(DocFilter({'isTable': False, 'limit': None}))
+    return rank_documents(query, documents, chunks)
 
 
 CITATION_RANGE = re.compile(r'\[\d+\]\s*[-–—]\s*\[\d+\]|\[\d+\s*[-–—]\s*\d+\]')
@@ -105,8 +91,7 @@ async def retrieve_sources(message, history):
     sources = group_sources(documents)
     object_ids = list(dict.fromkeys(doc.metadata['objectId'] for doc in documents if doc.metadata.get('objectId')))
     if object_ids:
-        # shortcut: expand up to 1000 indexed chunks; paginate store retrieval before using larger corpora.
-        chunks = await search.getStore().aget(DocFilter({'objectIds': object_ids, 'isTable': False, 'limit': 1000}))
+        chunks = await search.getStore().aget(DocFilter({'objectIds': object_ids, 'isTable': False, 'limit': None}))
         complete = {source['name']: source for source in group_sources(sorted(chunks, key=lambda doc: doc.metadata['chunk']))}
         sources = [complete.get(source['name'], source) for source in sources]
     # Follow-ups need earlier candidates and evidence, even when search returns another chunk of the same resume.

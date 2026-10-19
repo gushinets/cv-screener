@@ -1,9 +1,12 @@
 {
-  "embedding": "miniLM",
-  "miniLM": {
+  "embedding": "bgeM3",
+  "bgeM3": {
     "provider": "sentenceTransformer",
-    "model": "sentence-transformers/multi-qa-MiniLM-L6-cos-v1",
-    "tokens": 512
+    "model": "BAAI/bge-m3",
+    "revision": "5617a9f61b028005a4858fdac845db406aefb181",
+    "tokens": 256,
+    "cpu_threads": 6,
+    "batch_size": 8
   },
   "chat": "openai-gpt-6-luna",
   "openai-gpt-6-luna": {
@@ -17,16 +20,20 @@
   "store": "qdrant",
   "qdrant": {
     "provider": "qdrant",
-    "collection": "resumes",
+    "collection": "resumes_bge_m3_256_0",
     "host": "localhost",
     "port": 6333,
     "similarity": "Cosine",
     "renderChunkSize": 1000
   },
   "preprocessor": {
-    "chunk_size": 512,
+    "chunk_size": 256,
     "chunk_overlap": 0,
     "keep_separator": true,
-    "strip_whitespace": true
+    "strip_whitespace": true,
+    "length_tokenizers": [
+      {"model": "sentence-transformers/multi-qa-MiniLM-L6-cos-v1", "revision": "b207367332321f8e44f96e224ef15bc607f4dbf0"},
+      {"model": "intfloat/multilingual-e5-small", "revision": "614241f622f53c4eeff9890bdc4f31cfecc418b3", "prefix": "passage: "}
+    ]
   }
 }

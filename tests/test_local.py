@@ -18,30 +18,44 @@ with patch('search.search.Search'):
 
 
 class SearchTests(unittest.IsolatedAsyncioTestCase):
+    async def test_complete_qdrant_read_paginates_instead_of_truncating_the_lexical_index(self):
+        def point(number):
+            return models.Record(id=number, payload={'content': f'Candidate {number}',
+                'meta': {'parent': f'{number}.txt', 'chunk': 0}})
+        store = Store.__new__(Store)
+        store._collection = 'test'
+        store._client = SimpleNamespace(scroll=AsyncMock(side_effect=[([point(1)], 2), ([point(2)], None)]))
+        docs = await store.aget(DocFilter({'limit': None}))
+        self.assertEqual(len(docs), 2)
+        self.assertEqual(store._client.scroll.await_count, 2)
+        self.assertEqual(store._client.scroll.await_args.kwargs['offset'], 2)
+
     async def test_explicit_resume_filenames_survive_semantic_rank_out(self):
         named = [Doc(page_content='Project manager', metadata={'parent': 'John Doe.txt'}),
                  Doc(page_content='QA engineer', metadata={'parent': 'Sr QA Resume.txt'})]
-        noise = [Doc(page_content='QA', metadata={'parent': f'noise-{i}.txt'}) for i in range(30)]
-        store = SimpleNamespace(agetPaths=AsyncMock(return_value={
-            'John Doe.txt': 'pm', 'Sr QA Resume.txt': 'qa', 'Other.txt': 'other'}),
-            aget=AsyncMock(return_value=named))
+        noise = [Doc(page_content=f'Candidate {i}\nQA', metadata={'parent': f'noise-{i}.txt'}) for i in range(30)]
+        store = SimpleNamespace(aget=AsyncMock(return_value=named + noise))
         with patch.object(cv_screener.search, 'asearch', AsyncMock(return_value=noise)), \
                 patch.object(cv_screener.search, 'getStore', return_value=store):
             docs = await cv_screener.query_qdrant('Сравни JOHN DOE.TXT и Sr QA Resume.txt')
         self.assertEqual([doc.metadata['parent'] for doc in docs[:2]], ['John Doe.txt', 'Sr QA Resume.txt'])
         self.assertEqual(len(docs), 25)
-        self.assertEqual(store.aget.call_args.args[0].objectIds, ['pm', 'qa'])
+        self.assertIsNone(store.aget.call_args.args[0].limit)
 
     async def test_query_reranks_a_wider_pool_and_limits_distinct_resumes(self):
-        docs = [Doc(page_content='Python', metadata={'parent': 'same.txt', 'chunk': index}) for index in range(5)]
-        docs.extend(Doc(page_content='Python', metadata={'parent': f'cv-{index}.txt'}) for index in range(30))
-        with patch.object(cv_screener.search, 'asearch', AsyncMock(return_value=docs)) as search:
+        docs = [Doc(page_content='Python', score=.95-index/100,
+                    metadata={'parent': 'same.txt', 'chunk': index}) for index in range(5)]
+        docs.extend(Doc(page_content=f'Candidate {index}\nPython', score=.8-index/1000,
+                        metadata={'parent': f'cv-{index}.txt'}) for index in range(30))
+        store = SimpleNamespace(aget=AsyncMock(return_value=docs))
+        with patch.object(cv_screener.search, 'asearch', AsyncMock(return_value=docs)) as search, \
+                patch.object(cv_screener.search, 'getStore', return_value=store):
             selected = await cv_screener.query_qdrant('Python')
         self.assertEqual(len(selected), 25)
         self.assertEqual(len({doc.metadata['parent'] for doc in selected}), 25)
         self.assertIs(selected[0], docs[0])
         self.assertEqual(search.call_args.kwargs['docFilter'].limit, 100)
-        self.assertTrue(search.call_args.kwargs['docFilter'].useQuickRank)
+        self.assertFalse(search.call_args.kwargs['docFilter'].useQuickRank)
 
     async def test_query_points_returns_document_and_uses_embedding(self):
         point = models.ScoredPoint(

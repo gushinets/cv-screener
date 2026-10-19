@@ -3,6 +3,7 @@ This is the common preprocess for documents that break a large document
 into chunks
 '''
 import copy
+from functools import lru_cache
 
 from typing import List
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -31,14 +32,24 @@ class PreProcessor:
         config = Config.getConfig()
 
         # Get the parameters
-        param = config['preprocessor']
+        param = dict(config['preprocessor'])
 
         # Get the embedding to we can tokenize properly
         self._embedding = embedding
 
+        from transformers import AutoTokenizer
+        counters = [(AutoTokenizer.from_pretrained(spec['model'], revision=spec.get('revision'),
+                     cache_dir=Config.getModelCacheFolder()), spec.get('prefix', ''))
+                    for spec in param.pop('length_tokenizers', [])]
+
+        @lru_cache(maxsize=4096)
+        def length(text):
+            return max([embedding.getTokens(text)] +
+                       [len(tokenizer.encode(prefix + text, verbose=False)) for tokenizer, prefix in counters])
+
         # Build the preprocessor
         self._preprocessor = RecursiveCharacterTextSplitter(
-            length_function=self._embedding.getTokens,
+            length_function=length,
             **param)
 
     # Process a document by splitting it into chunks

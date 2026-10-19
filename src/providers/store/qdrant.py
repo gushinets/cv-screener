@@ -357,18 +357,16 @@ class Store(DocumentStoreBase):
         # Build up the filter
         filter = self._convertFilter(docFilter=docFilter)
 
-        # Perform the search
-        records, nextPoint = await self._client.scroll(
-            collection_name=self._collection,
-            scroll_filter=filter,
-            offset=docFilter.offset,
-            limit=docFilter.limit,
-            with_vectors=False
-        )
-
-        # Convert the points into groups
-        groups = self._convertToDocs(records)
-        return groups
+        documents, offset = [], docFilter.offset or None
+        while docFilter.limit is None or len(documents) < docFilter.limit:
+            remaining = 500 if docFilter.limit is None else min(500, docFilter.limit - len(documents))
+            records, offset = await self._client.scroll(
+                collection_name=self._collection, scroll_filter=filter,
+                offset=offset, limit=remaining, with_vectors=False)
+            documents.extend(self._convertToDocs(records))
+            if offset is None:
+                break
+        return documents
 
     async def agetPaths(self, parent: str | None = None, offset: int = 0, limit: int = 1000) -> Dict[str, str]:
         '''

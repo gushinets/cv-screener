@@ -29,7 +29,7 @@ class DocFilter:
     followUpQuestions: int = 5
 
     offset: int = 0
-    limit: int = 25
+    limit: int | None = 25
 
     # Include context in the search results
     context: bool = False
